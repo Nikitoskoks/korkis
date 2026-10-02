@@ -18,8 +18,19 @@
   .buy { color:var(--buy); } .sell { color:var(--sell); } .muted { color:var(--muted); }
   .bar { flex:1 1 160px; height:8px; background:var(--sell); border-radius:4px; overflow:hidden; min-width:120px; }
   .bar div { height:100%; width:50%; background:var(--buy); transition:width .4s; }
-  .log { position:fixed; bottom:12px; right:12px; width:min(300px, calc(100% - 24px)); max-height:40vh; overflow:hidden;
+  .tug { position:fixed; left:50%; bottom:14px; transform:translateX(-50%); width:min(560px, calc(100% - 24px));
+         background:var(--panel); border-radius:14px; padding:10px 14px 12px; text-align:center; }
+  .tug .who { font-size:20px; font-weight:800; margin-bottom:6px; }
+  .tug .row { display:flex; align-items:center; gap:10px; font-weight:800; font-size:22px; font-variant-numeric:tabular-nums; }
+  .rope { position:relative; flex:1; height:16px; border-radius:8px; background:var(--sell); overflow:hidden; }
+  .rope .fill { position:absolute; inset:0 auto 0 0; width:50%; background:var(--buy); transition:width .5s; }
+  .rope .knot { position:absolute; top:-2px; left:50%; width:6px; height:20px; margin-left:-3px; background:#fff; border-radius:3px;
+                box-shadow:0 0 8px #fff; transition:left .5s; }
+  .rope .mid { position:absolute; top:0; bottom:0; left:50%; width:1px; background:rgba(4,18,31,.6); }
+  .tug .sub { color:var(--muted); font-size:12px; margin-top:4px; }
+  .log { position:fixed; bottom:110px; right:12px; width:min(300px, calc(100% - 24px)); max-height:40vh; overflow:hidden;
          background:var(--panel); border-radius:12px; padding:8px 12px; font-size:13px; font-variant-numeric:tabular-nums; }
+  @media (max-width:600px) { .log { max-height:18vh; bottom:118px; font-size:12px; } .tug .who { font-size:17px; } }
   .log div { padding:2px 0; display:flex; justify-content:space-between; gap:8px; }
 </style>
 </head>
@@ -41,12 +52,22 @@
   <span class="stat">Битва: <b class="buy" id="bullScore">0</b> : <b class="sell" id="bearScore">0</b></span>
   <span id="status" class="muted">подключение…</span>
 </div>
+<div class="tug">
+  <div class="who" id="who">⚖️ Равновесие</div>
+  <div class="row">
+    <span class="buy">🐂 <span id="bullPct">50</span>%</span>
+    <div class="rope"><div class="fill" id="tugFill"></div><div class="mid"></div><div class="knot" id="knot"></div></div>
+    <span class="sell"><span id="bearPct">50</span>% 🐻</span>
+  </div>
+  <div class="sub">все сделки за последнюю минуту: <span class="buy" id="tugBuy">$0</span> vs <span class="sell" id="tugSell">$0</span></div>
+</div>
 <div class="log" id="log"><div class="muted">Ждём китов…</div></div>
 
 <script>
 const canvas = document.getElementById("sea");
 const ctx = canvas.getContext("2d");
 const $ = id => document.getElementById(id);
+let flow = [], tint = .5; // [время, объём покупок, объём продаж] для каната
 let W, H, fish = [], critters = [], sharks = [], score = { bull: 0, bear: 0 }, bubbles = [], ws, buyVol = 0, sellVol = 0, logRows = [];
 
 function resize() {
@@ -60,7 +81,7 @@ addEventListener("resize", resize); resize();
 const fmt = n => n >= 1e6 ? "$" + (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? "$" + (n / 1e3).toFixed(0) + "K" : "$" + n.toFixed(0);
 
 function reset() {
-  fish = []; critters = []; sharks = []; score = { bull: 0, bear: 0 }; buyVol = sellVol = 0; logRows = [];
+  flow = []; fish = []; critters = []; sharks = []; score = { bull: 0, bear: 0 }; buyVol = sellVol = 0; logRows = [];
   $("bullScore").textContent = $("bearScore").textContent = 0;
   renderStats(); renderLog();
 }
@@ -87,6 +108,8 @@ function connect() {
 function onTrade(t) {
   const price = +t.p, usd = price * +t.v, buy = t.S === "Buy";
   $("price").textContent = price.toLocaleString("ru-RU");
+  const sec = Math.floor(Date.now() / 1000), last = flow[flow.length - 1];
+  if (last && last[0] === sec) last[buy ? 1 : 2] += usd; else flow.push([sec, buy ? usd : 0, buy ? 0 : usd]);
   if (usd < +$("min").value) { spawnCritter(usd, buy); return; }
   buy ? buyVol += usd : sellVol += usd;
   spawnFish(usd, buy);
@@ -171,6 +194,23 @@ function drawShark(k) {
   ctx.fillText((k.bull ? "🐂 " : "🐻 ") + k.label + (k.eaten ? " · съел " + k.eaten : ""), k.x, k.y - s * .9);
 }
 
+function renderTug() {
+  const cutoff = Date.now() / 1000 - 60;
+  while (flow.length && flow[0][0] < cutoff) flow.shift();
+  let b = 0, sl = 0;
+  for (const [, x, y] of flow) { b += x; sl += y; }
+  const share = b + sl ? b / (b + sl) : .5, pct = Math.round(share * 100);
+  tint = share;
+  $("bullPct").textContent = pct; $("bearPct").textContent = 100 - pct;
+  $("tugFill").style.width = $("knot").style.left = pct + "%";
+  $("tugBuy").textContent = fmt(b); $("tugSell").textContent = fmt(sl);
+  const who = $("who");
+  if (pct >= 60) { who.textContent = pct >= 75 ? "🐂🔥 Быки рвут!" : "🐂 Быки давят!"; who.className = "who buy"; }
+  else if (pct <= 40) { who.textContent = pct <= 25 ? "🐻🔥 Медведи рвут!" : "🐻 Медведи давят!"; who.className = "who sell"; }
+  else { who.textContent = "⚖️ Равновесие"; who.className = "who"; }
+}
+setInterval(renderTug, 500);
+
 function renderStats() {
   $("buyVol").textContent = fmt(buyVol);
   $("sellVol").textContent = fmt(sellVol);
@@ -251,6 +291,8 @@ function frame() {
   const g = ctx.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, "#0a2a45"); g.addColorStop(1, "#020a12");
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const lean = (tint - .5) * 2; // подсветка воды цветом побеждающей стороны
+  if (Math.abs(lean) > .1) { ctx.fillStyle = lean > 0 ? `rgba(46,230,166,${lean * .12})` : `rgba(255,92,122,${-lean * .12})`; ctx.fillRect(0, 0, W, H); }
 
   if (Math.random() < .3) bubbles.push({ x: Math.random() * W, y: H + 5, r: 1 + Math.random() * 3 });
   ctx.fillStyle = "rgba(160,210,255,.25)";
