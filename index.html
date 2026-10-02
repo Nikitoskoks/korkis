@@ -38,6 +38,7 @@
   <span class="stat buy">Купили: <b id="buyVol">$0</b></span>
   <span class="stat sell">Продали: <b id="sellVol">$0</b></span>
   <div class="bar" title="Доля покупок среди китов"><div id="ratio"></div></div>
+  <span class="stat">Битва: <b class="buy" id="bullScore">0</b> : <b class="sell" id="bearScore">0</b></span>
   <span id="status" class="muted">подключение…</span>
 </div>
 <div class="log" id="log"><div class="muted">Ждём китов…</div></div>
@@ -46,7 +47,7 @@
 const canvas = document.getElementById("sea");
 const ctx = canvas.getContext("2d");
 const $ = id => document.getElementById(id);
-let W, H, fish = [], critters = [], bubbles = [], ws, buyVol = 0, sellVol = 0, logRows = [];
+let W, H, fish = [], critters = [], sharks = [], score = { bull: 0, bear: 0 }, bubbles = [], ws, buyVol = 0, sellVol = 0, logRows = [];
 
 function resize() {
   const dpr = window.devicePixelRatio || 1;
@@ -58,21 +59,27 @@ addEventListener("resize", resize); resize();
 
 const fmt = n => n >= 1e6 ? "$" + (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? "$" + (n / 1e3).toFixed(0) + "K" : "$" + n.toFixed(0);
 
+function reset() {
+  fish = []; critters = []; sharks = []; score = { bull: 0, bear: 0 }; buyVol = sellVol = 0; logRows = [];
+  $("bullScore").textContent = $("bearScore").textContent = 0;
+  renderStats(); renderLog();
+}
+
 function connect() {
   if (ws) { ws.onclose = null; ws.close(); }
-  fish = []; critters = []; buyVol = sellVol = 0; logRows = []; renderStats(); renderLog();
   const symbol = $("symbol").value;
   $("status").textContent = "подключение…";
   ws = new WebSocket("wss://stream.bybit.com/v5/public/linear");
   ws.onopen = () => {
     $("status").textContent = "онлайн";
-    ws.send(JSON.stringify({ op: "subscribe", args: ["publicTrade." + symbol] }));
+    ws.send(JSON.stringify({ op: "subscribe", args: ["publicTrade." + symbol, "allLiquidation." + symbol] }));
     ws.ping = setInterval(() => ws.readyState === 1 && ws.send('{"op":"ping"}'), 20000);
   };
   ws.onmessage = e => {
     const msg = JSON.parse(e.data);
     if (!msg.topic || !msg.data) return;
-    for (const t of msg.data) onTrade(t);
+    if (msg.topic.startsWith("allLiquidation")) for (const l of msg.data) onLiquidation(l);
+    else for (const t of msg.data) onTrade(t);
   };
   ws.onclose = () => { clearInterval(ws.ping); $("status").textContent = "переподключение…"; setTimeout(connect, 3000); };
 }
@@ -88,6 +95,82 @@ function onTrade(t) {
   renderStats(); renderLog();
 }
 
+// Ликвидация лонга (S=Buy) — победа шортистов: красная акула охотится на зелёных.
+// Ликвидация шорта (S=Sell) — зелёная акула охотится на красных.
+function onLiquidation(l) {
+  const usd = +l.p * +l.v, bull = l.S === "Sell";
+  spawnShark(usd, bull);
+  logRows.unshift({ usd, buy: bull, liq: true, time: new Date(+l.T).toLocaleTimeString("ru-RU") });
+  logRows.length = Math.min(logRows.length, 15);
+  renderLog();
+}
+
+function spawnShark(usd, bull) {
+  if (sharks.length > 12) return;
+  const size = Math.min(25 + Math.sqrt(usd / 1000) * 2.5, 75);
+  sharks.push({ x: bull ? -size * 1.5 : W + size * 1.5, y: H * (.2 + Math.random() * .6), vx: bull ? 2 : -2, vy: 0,
+                size, bull, label: fmt(usd), phase: 0, eaten: 0, life: 0, chomp: 0 });
+}
+
+function updateShark(k) {
+  k.life++; k.phase += .2; k.chomp = Math.max(0, k.chomp - 1);
+  const leaving = k.life > 900 || k.eaten >= 8;
+  let target = null, best = Infinity;
+  if (!leaving) for (const c of [...fish, ...critters]) {
+    if (c.dead || c.buy !== !k.bull) continue;
+    const d = Math.hypot(c.x - k.x, c.y - k.y);
+    if (d < best) { best = d; target = c; }
+  }
+  const speed = 2.2 + 60 / k.size;
+  let ax, ay;
+  if (target) { ax = target.x - k.x; ay = target.y - k.y; }
+  else if (leaving) { ax = k.bull ? -1 : 1; ay = 0; }
+  else { ax = (k.bull ? 1 : -1) * 50; ay = Math.sin(k.life / 40) * 30; } // патрулирует
+  const len = Math.hypot(ax, ay) || 1;
+  k.vx += (ax / len * speed - k.vx) * .06;
+  k.vy += (ay / len * speed - k.vy) * .06;
+  k.x += k.vx; k.y += k.vy;
+  if (target && best < k.size * .7 + (target.size || target.s)) {
+    target.dead = true; k.eaten++; k.chomp = 12; k.size = Math.min(k.size + 2, 95);
+    k.bull ? score.bull++ : score.bear++;
+    $("bullScore").textContent = score.bull; $("bearScore").textContent = score.bear;
+  }
+  return !(leaving && (k.x < -k.size * 3 || k.x > W + k.size * 3)) && k.life < 1500;
+}
+
+function drawShark(k) {
+  const s = k.size, color = k.bull ? "#1fb884" : "#d93a5a";
+  ctx.save();
+  ctx.translate(k.x, k.y);
+  ctx.rotate(Math.atan2(k.vy, Math.abs(k.vx)) * Math.sign(k.vx || 1));
+  ctx.scale(Math.sign(k.vx || 1), 1);
+  ctx.globalAlpha = Math.min(1, k.life / 20);
+  const wag = Math.sin(k.phase) * s * .18;
+  ctx.fillStyle = color;
+  ctx.beginPath(); // хвост
+  ctx.moveTo(-s * .9, 0); ctx.lineTo(-s * 1.5, -s * .55 + wag); ctx.lineTo(-s * 1.25, wag * .5); ctx.lineTo(-s * 1.45, s * .35 + wag);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath(); // спинной плавник
+  ctx.moveTo(-s * .2, -s * .3); ctx.lineTo(-s * .45, -s * .85); ctx.lineTo(s * .2, -s * .3); ctx.fill();
+  ctx.beginPath(); // тело
+  ctx.moveTo(s * 1.1, 0);
+  ctx.quadraticCurveTo(s * .6, -s * .45, -s * .3, -s * .35);
+  ctx.quadraticCurveTo(-s * .9, -s * .15, -s, 0);
+  ctx.quadraticCurveTo(-s * .9, s * .2, -s * .3, s * .32);
+  ctx.quadraticCurveTo(s * .6, s * .4, s * 1.1, 0);
+  ctx.fill();
+  ctx.fillStyle = "#04121f"; // пасть
+  const open = k.chomp ? Math.sin(k.chomp / 12 * Math.PI) * s * .18 : s * .03;
+  ctx.beginPath(); ctx.moveTo(s * 1.1, 0); ctx.lineTo(s * .55, s * .08 - open); ctx.lineTo(s * .55, s * .12 + open); ctx.fill();
+  ctx.fillStyle = "#fff"; // глаз
+  ctx.beginPath(); ctx.arc(s * .65, -s * .13, Math.max(2, s * .06), 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = "rgba(230,241,255,.85)";
+  ctx.font = `bold ${Math.min(s * .25, 16)}px system-ui`;
+  ctx.textAlign = "center";
+  ctx.fillText((k.bull ? "🐂 " : "🐻 ") + k.label + (k.eaten ? " · съел " + k.eaten : ""), k.x, k.y - s * .9);
+}
+
 function renderStats() {
   $("buyVol").textContent = fmt(buyVol);
   $("sellVol").textContent = fmt(sellVol);
@@ -97,7 +180,7 @@ function renderStats() {
 
 function renderLog() {
   $("log").innerHTML = logRows.length
-    ? logRows.map(r => `<div class="${r.buy ? "buy" : "sell"}"><span>${r.buy ? "▲ лонг" : "▼ шорт"}</span><b>${fmt(r.usd)}</b><span class="muted">${r.time}</span></div>`).join("")
+    ? logRows.map(r => `<div class="${r.buy ? "buy" : "sell"}"><span>${r.liq ? (r.buy ? "🦈 ликв. шорта" : "🦈 ликв. лонга") : r.buy ? "▲ лонг" : "▼ шорт"}</span><b>${fmt(r.usd)}</b><span class="muted">${r.time}</span></div>`).join("")
     : '<div class="muted">Ждём китов…</div>';
 }
 
@@ -174,22 +257,24 @@ function frame() {
   bubbles = bubbles.filter(b => (b.y -= .6 + b.r * .3) > -5);
   for (const b of bubbles) { ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill(); }
 
-  critters = critters.filter(c => c.y > -20 && c.y < H + 20);
+  critters = critters.filter(c => !c.dead && c.y > -20 && c.y < H + 20);
   for (const c of critters) {
     c.y += c.vy * (1 + Math.sin(c.phase) * .5); c.x += Math.sin(c.phase * .5) * .3; c.phase += .08;
     drawCritter(c);
   }
 
-  fish = fish.filter(f => f.x > -f.size * 2 && f.x < W + f.size * 2 && f.y > -f.size && f.y < H + f.size);
+  fish = fish.filter(f => !f.dead && f.x > -f.size * 2 && f.x < W + f.size * 2 && f.y > -f.size && f.y < H + f.size);
   for (const f of fish) {
     f.x += f.vx; f.y += f.vy + Math.sin(f.phase) * .3; f.phase += .15; f.life++;
     drawFish(f);
   }
+  sharks = sharks.filter(updateShark);
+  for (const k of sharks) drawShark(k);
   requestAnimationFrame(frame);
 }
 
-$("symbol").onchange = connect;
-$("min").onchange = () => { fish = []; buyVol = sellVol = 0; logRows = []; renderStats(); renderLog(); };
+$("symbol").onchange = () => { reset(); connect(); };
+$("min").onchange = reset;
 connect();
 frame();
 </script>
