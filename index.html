@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Кто ты по жизни?</title>
+<style>
+  :root { --bg:#111; --card:#1c1c1c; --fg:#eee; --acc:#f5c518; --muted:#999; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg); color:var(--fg);
+         font-family:system-ui, sans-serif; padding:16px; }
+  .card { background:var(--card); max-width:480px; width:100%; padding:28px; border-radius:16px; }
+  h1 { margin:0 0 8px; color:var(--acc); }
+  .progress { color:var(--muted); font-size:14px; margin-bottom:16px; }
+  button { display:block; width:100%; margin:8px 0; padding:14px; border:1px solid #333; border-radius:10px;
+           background:#262626; color:var(--fg); font-size:16px; text-align:left; cursor:pointer; }
+  button:hover { border-color:var(--acc); }
+  .result { font-size:42px; margin:12px 0; }
+</style>
+</head>
+<body>
+<div class="card" id="app"></div>
+<script>
+const questions = [
+  { q: "Три часа ночи. Ты:", a: ["Сплю, завтра рано вставать", "Генерирую проект в v0", "Гуляю с пацанами", "Читаю Достоевского"] },
+  { q: "Сломался чайник. Что делаешь?", a: ["Иду и покупаю новый", "Пишу в чат, может кто подскажет", "Чиню сам, у меня и паяльник есть", "Пью воду из-под крана, мне норм"] },
+  { q: "Твоя суперсила:", a: ["Пунктуальность", "Начинать проекты", "Решать вопросики", "Глубокие мысли"] },
+  { q: "Друг занял денег и пропал. Ты:", a: ["Напоминаю вежливо", "Уже забыл, у меня новый проект", "Еду разбираться", "Это урок судьбы"] },
+  { q: "Идеальные выходные:", a: ["Уборка и список дел", "Хакатон с самим собой", "Шашлыки на районе", "Лежать и смотреть в потолок"] },
+];
+const results = [
+  { e: "📋", t: "Ответственный гражданин", d: "Платишь налоги вовремя и знаешь, где лежат документы. Тебе доверяют ключи." },
+  { e: "🚀", t: "Вечный стартапер", d: "Сто проектов начато, ноль закончено. Зато у тебя шикарный дашборд." },
+  { e: "😎", t: "Ровный пацан", d: "По жизни честный, за базар отвечаешь, вопросики решаешь." },
+  { e: "🧘", t: "Философ", d: "Жизнь — это путь, а не цель. Особенно если лень вставать с дивана." },
+];
+let step = 0, score = [0, 0, 0, 0];
+const app = document.getElementById("app");
+
+function render() {
+  if (step < questions.length) {
+    const { q, a } = questions[step];
+    app.innerHTML = `<h1>Кто ты по жизни?</h1>
+      <div class="progress">Вопрос ${step + 1} из ${questions.length}</div>
+      <p>${q}</p>` + a.map((t, i) => `<button data-i="${i}">${t}</button>`).join("");
+    app.querySelectorAll("button").forEach(b => b.onclick = () => { score[+b.dataset.i]++; step++; render(); });
+  } else {
+    const r = results[score.indexOf(Math.max(...score))];
+    app.innerHTML = `<h1>По жизни ты…</h1><div class="result">${r.e} ${r.t}</div><p>${r.d}</p>
+      <button id="again">Пройти ещё раз</button>`;
+    document.getElementById("again").onclick = () => { step = 0; score = [0, 0, 0, 0]; render(); };
+  }
+}
+render();
+</script>
+</body>
+</html>
