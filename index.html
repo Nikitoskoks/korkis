@@ -3,322 +3,224 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Детектор китов</title>
+<title>Битва лонгов и шортов</title>
 <style>
-  :root { --bg:#04121f; --panel:rgba(4,18,31,.8); --fg:#e6f1ff; --muted:#7f9bb5; --buy:#2ee6a6; --sell:#ff5c7a; }
+  :root { --bg:#1a2435; --panel:rgba(10,16,28,.82); --fg:#e8eef7; --muted:#8aa0b8; --bull:#2ee6a6; --bear:#ff5c7a; }
   * { box-sizing:border-box; }
-  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font-family:system-ui, sans-serif; overflow:hidden; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font-family:system-ui,sans-serif; overflow:hidden; }
   canvas { position:fixed; inset:0; width:100%; height:100%; display:block; }
-  .panel { position:fixed; top:12px; left:12px; right:12px; display:flex; flex-wrap:wrap; gap:10px 18px; align-items:center;
-           background:var(--panel); padding:10px 14px; border-radius:12px; backdrop-filter:blur(6px); font-size:14px; }
-  .panel h1 { font-size:18px; margin:0; }
-  select, input { background:#0b2236; color:var(--fg); border:1px solid #1d3a55; border-radius:6px; padding:4px 6px; font-size:14px; }
-  input { width:110px; }
-  .stat b { font-variant-numeric:tabular-nums; }
-  .buy { color:var(--buy); } .sell { color:var(--sell); } .muted { color:var(--muted); }
-  .bar { flex:1 1 160px; height:8px; background:var(--sell); border-radius:4px; overflow:hidden; min-width:120px; }
-  .bar div { height:100%; width:50%; background:var(--buy); transition:width .4s; }
-  .tug { position:fixed; left:50%; bottom:14px; transform:translateX(-50%); width:min(560px, calc(100% - 24px));
-         background:var(--panel); border-radius:14px; padding:10px 14px 12px; text-align:center; }
-  .tug .who { font-size:20px; font-weight:800; margin-bottom:6px; }
-  .tug .row { display:flex; align-items:center; gap:10px; font-weight:800; font-size:22px; font-variant-numeric:tabular-nums; }
-  .rope { position:relative; flex:1; height:16px; border-radius:8px; background:var(--sell); overflow:hidden; }
-  .rope .fill { position:absolute; inset:0 auto 0 0; width:50%; background:var(--buy); transition:width .5s; }
-  .rope .knot { position:absolute; top:-2px; left:50%; width:6px; height:20px; margin-left:-3px; background:#fff; border-radius:3px;
-                box-shadow:0 0 8px #fff; transition:left .5s; }
-  .rope .mid { position:absolute; top:0; bottom:0; left:50%; width:1px; background:rgba(4,18,31,.6); }
-  .tug .sub { color:var(--muted); font-size:12px; margin-top:4px; }
-  .log { position:fixed; bottom:110px; right:12px; width:min(300px, calc(100% - 24px)); max-height:40vh; overflow:hidden;
-         background:var(--panel); border-radius:12px; padding:8px 12px; font-size:13px; font-variant-numeric:tabular-nums; }
-  @media (max-width:600px) { .log { max-height:18vh; bottom:118px; font-size:12px; } .tug .who { font-size:17px; } }
-  .log div { padding:2px 0; display:flex; justify-content:space-between; gap:8px; }
+  .panel { position:fixed; top:10px; left:10px; right:10px; display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center;
+           background:var(--panel); padding:8px 14px; border-radius:12px; backdrop-filter:blur(6px); font-size:14px; }
+  .panel h1 { font-size:16px; margin:0; }
+  select, input { background:#0b1322; color:var(--fg); border:1px solid #27354b; border-radius:6px; padding:4px 6px; font-size:14px; }
+  input { width:90px; }
+  .bull { color:var(--bull); } .bear { color:var(--bear); }
+  .tug { position:fixed; left:50%; top:52px; transform:translateX(-50%); width:min(560px,calc(100% - 20px));
+         background:var(--panel); border-radius:10px; padding:6px 12px 8px; text-align:center; }
+  .tug .who { font-weight:800; font-size:16px; margin-bottom:4px; }
+  .tug .row { display:flex; align-items:center; gap:8px; font-weight:800; font-size:18px; font-variant-numeric:tabular-nums; }
+  .rope { position:relative; flex:1; height:12px; border-radius:6px; background:var(--bear); overflow:hidden; }
+  .rope .fill { position:absolute; inset:0 auto 0 0; width:50%; background:var(--bull); transition:width .5s; }
+  .rope .mid { position:absolute; top:0; bottom:0; left:50%; width:1px; background:rgba(0,0,0,.5); }
+  #status { font-size:13px; }
 </style>
 </head>
 <body>
-<canvas id="sea"></canvas>
+<canvas id="c"></canvas>
 <div class="panel">
-  <h1>🐋 Детектор китов</h1>
+  <h1>⚔️ Битва лонгов и шортов</h1>
   <label>Пара
-    <select id="symbol">
-      <option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option>
-      <option>XRPUSDT</option><option>DOGEUSDT</option>
-    </select>
+    <select id="symbol"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>XRPUSDT</option><option>DOGEUSDT</option></select>
   </label>
-  <label>Кит от $ <input id="min" type="number" value="50000" step="10000" min="1000"></label>
-  <span class="stat">Цена: <b id="price">—</b></span>
-  <span class="stat buy">Купили: <b id="buyVol">$0</b></span>
-  <span class="stat sell">Продали: <b id="sellVol">$0</b></span>
-  <div class="bar" title="Доля покупок среди китов"><div id="ratio"></div></div>
-  <span class="stat">Битва: <b class="buy" id="bullScore">0</b> : <b class="sell" id="bearScore">0</b></span>
+  <label>Крупная сделка от $ <input id="big" type="number" value="100000" step="10000"></label>
+  <span>Цена: <b id="price">—</b></span>
+  <span class="bull">🟢 <b id="bc">0</b></span>
+  <span class="bear"><b id="rc">0</b> 🔴</span>
   <span id="status" class="muted">подключение…</span>
 </div>
 <div class="tug">
   <div class="who" id="who">⚖️ Равновесие</div>
-  <div class="row">
-    <span class="buy">🐂 <span id="bullPct">50</span>%</span>
-    <div class="rope"><div class="fill" id="tugFill"></div><div class="mid"></div><div class="knot" id="knot"></div></div>
-    <span class="sell"><span id="bearPct">50</span>% 🐻</span>
-  </div>
-  <div class="sub">все сделки за последнюю минуту: <span class="buy" id="tugBuy">$0</span> vs <span class="sell" id="tugSell">$0</span></div>
+  <div class="row"><span class="bull">🐂<span id="bp">50</span>%</span>
+    <div class="rope"><div class="fill" id="fill"></div><div class="mid"></div></div>
+    <span class="bear"><span id="rp">50</span>%🐻</span></div>
 </div>
-<div class="log" id="log"><div class="muted">Ждём китов…</div></div>
 
 <script>
-const canvas = document.getElementById("sea");
-const ctx = canvas.getContext("2d");
-const $ = id => document.getElementById(id);
-let flow = [], tint = .5; // [время, объём покупок, объём продаж] для каната
-let W, H, fish = [], critters = [], sharks = [], score = { bull: 0, bear: 0 }, bubbles = [], ws, buyVol = 0, sellVol = 0, logRows = [];
+const cv = document.getElementById("c"), ctx = cv.getContext("2d"), $ = id => document.getElementById(id);
+let W, H, GROUND, units = [], arrows = [], flashes = [], ws, flow = [], tint = .5, kills = { bull: 0, bear: 0 };
+let champCd = { bull: 0, bear: 0 };
 
-function resize() {
-  const dpr = window.devicePixelRatio || 1;
-  W = innerWidth; H = innerHeight;
-  canvas.width = W * dpr; canvas.height = H * dpr;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-}
+function resize() { const d = devicePixelRatio || 1; W = innerWidth; H = innerHeight; cv.width = W * d; cv.height = H * d; ctx.setTransform(d,0,0,d,0,0); GROUND = H - 70; }
 addEventListener("resize", resize); resize();
+const fmt = n => n >= 1e6 ? "$"+(n/1e6).toFixed(1)+"M" : n >= 1e3 ? "$"+(n/1e3).toFixed(0)+"K" : "$"+n.toFixed(0);
 
-const fmt = n => n >= 1e6 ? "$" + (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? "$" + (n / 1e3).toFixed(0) + "K" : "$" + n.toFixed(0);
-
-function reset() {
-  flow = []; fish = []; critters = []; sharks = []; score = { bull: 0, bear: 0 }; buyVol = sellVol = 0; logRows = [];
-  $("bullScore").textContent = $("bearScore").textContent = 0;
-  renderStats(); renderLog();
-}
-
+// ---- соединение с Bybit ----
 function connect() {
   if (ws) { ws.onclose = null; ws.close(); }
-  const symbol = $("symbol").value;
-  $("status").textContent = "подключение…";
+  units = []; arrows = []; flow = []; kills = { bull:0, bear:0 };
+  const sym = $("symbol").value; $("status").textContent = "подключение…";
   ws = new WebSocket("wss://stream.bybit.com/v5/public/linear");
-  ws.onopen = () => {
-    $("status").textContent = "онлайн";
-    ws.send(JSON.stringify({ op: "subscribe", args: ["publicTrade." + symbol, "allLiquidation." + symbol] }));
-    ws.ping = setInterval(() => ws.readyState === 1 && ws.send('{"op":"ping"}'), 20000);
-  };
-  ws.onmessage = e => {
-    const msg = JSON.parse(e.data);
-    if (!msg.topic || !msg.data) return;
-    if (msg.topic.startsWith("allLiquidation")) for (const l of msg.data) onLiquidation(l);
-    else for (const t of msg.data) onTrade(t);
-  };
-  ws.onclose = () => { clearInterval(ws.ping); $("status").textContent = "переподключение…"; setTimeout(connect, 3000); };
+  ws.onopen = () => { $("status").textContent = "бой идёт"; ws.send(JSON.stringify({ op:"subscribe", args:["publicTrade."+sym] })); ws.ping = setInterval(()=>ws.readyState===1&&ws.send('{"op":"ping"}'),20000); };
+  ws.onmessage = e => { const m = JSON.parse(e.data); if (m.topic && m.data) for (const t of m.data) onTrade(t); };
+  ws.onclose = () => { clearInterval(ws.ping); $("status").textContent = "переподключение…"; setTimeout(connect,3000); };
 }
-
 function onTrade(t) {
   const price = +t.p, usd = price * +t.v, buy = t.S === "Buy";
   $("price").textContent = price.toLocaleString("ru-RU");
-  const sec = Math.floor(Date.now() / 1000), last = flow[flow.length - 1];
-  if (last && last[0] === sec) last[buy ? 1 : 2] += usd; else flow.push([sec, buy ? usd : 0, buy ? 0 : usd]);
-  if (usd < +$("min").value) { spawnCritter(usd, buy); return; }
-  buy ? buyVol += usd : sellVol += usd;
-  spawnFish(usd, buy);
-  logRows.unshift({ usd, buy, time: new Date(+t.T).toLocaleTimeString("ru-RU") });
-  logRows.length = Math.min(logRows.length, 15);
-  renderStats(); renderLog();
+  const sec = Math.floor(Date.now()/1000), last = flow[flow.length-1];
+  if (last && last[0]===sec) last[buy?1:2] += usd; else flow.push([sec, buy?usd:0, buy?0:usd]);
+  // каждая сделка = воин. крупная = сильнее.
+  const big = +$("big").value;
+  const strong = usd >= big;
+  spawnSoldier(buy ? "bull" : "bear", strong, usd);
 }
 
-// Ликвидация лонга (S=Buy) — победа шортистов: красная акула охотится на зелёных.
-// Ликвидация шорта (S=Sell) — зелёная акула охотится на красных.
-function onLiquidation(l) {
-  const usd = +l.p * +l.v, bull = l.S === "Sell";
-  spawnShark(usd, bull);
-  logRows.unshift({ usd, buy: bull, liq: true, time: new Date(+l.T).toLocaleTimeString("ru-RU") });
-  logRows.length = Math.min(logRows.length, 15);
-  renderLog();
+// ---- армии ----
+function spawnSoldier(side, strong, usd) {
+  if (units.length > 260) return;
+  const bull = side === "bull";
+  const archer = Math.random() < .35;
+  units.push({
+    side, bull, archer,
+    x: bull ? 60 + Math.random()*90 : W - 60 - Math.random()*90,
+    y: GROUND - Math.random()*52,
+    hp: strong ? 3 : 1, max: strong ? 3 : 1, strong,
+    spd: (archer ? 1.1 : 1.9) + Math.random()*.6,
+    cd: Math.random()*40, phase: Math.random()*6, champ: false,
+    r: strong ? 11 : 7,
+  });
 }
-
-function spawnShark(usd, bull) {
-  if (sharks.length > 12) return;
-  const size = Math.min(25 + Math.sqrt(usd / 1000) * 2.5, 75);
-  sharks.push({ x: bull ? -size * 1.5 : W + size * 1.5, y: H * (.2 + Math.random() * .6), vx: bull ? 2 : -2, vy: 0,
-                size, bull, label: fmt(usd), phase: 0, eaten: 0, life: 0, chomp: 0 });
-}
-
-function updateShark(k) {
-  k.life++; k.phase += .2; k.chomp = Math.max(0, k.chomp - 1);
-  const leaving = k.life > 900 || k.eaten >= 8;
-  let target = null, best = Infinity;
-  if (!leaving) for (const c of [...fish, ...critters]) {
-    if (c.dead || c.buy !== !k.bull) continue;
-    const d = Math.hypot(c.x - k.x, c.y - k.y);
-    if (d < best) { best = d; target = c; }
-  }
-  const speed = 2.2 + 60 / k.size;
-  let ax, ay;
-  if (target) { ax = target.x - k.x; ay = target.y - k.y; }
-  else if (leaving) { ax = k.bull ? -1 : 1; ay = 0; }
-  else { ax = (k.bull ? 1 : -1) * 50; ay = Math.sin(k.life / 40) * 30; } // патрулирует
-  const len = Math.hypot(ax, ay) || 1;
-  k.vx += (ax / len * speed - k.vx) * .06;
-  k.vy += (ay / len * speed - k.vy) * .06;
-  k.x += k.vx; k.y += k.vy;
-  if (target && best < k.size * .7 + (target.size || target.s)) {
-    target.dead = true; k.eaten++; k.chomp = 12; k.size = Math.min(k.size + 2, 95);
-    k.bull ? score.bull++ : score.bear++;
-    $("bullScore").textContent = score.bull; $("bearScore").textContent = score.bear;
-  }
-  return !(leaving && (k.x < -k.size * 3 || k.x > W + k.size * 3)) && k.life < 1500;
-}
-
-function drawShark(k) {
-  const s = k.size, color = k.bull ? "#1fb884" : "#d93a5a";
-  ctx.save();
-  ctx.translate(k.x, k.y);
-  ctx.rotate(Math.atan2(k.vy, Math.abs(k.vx)) * Math.sign(k.vx || 1));
-  ctx.scale(Math.sign(k.vx || 1), 1);
-  ctx.globalAlpha = Math.min(1, k.life / 20);
-  const wag = Math.sin(k.phase) * s * .18;
-  ctx.fillStyle = color;
-  ctx.beginPath(); // хвост
-  ctx.moveTo(-s * .9, 0); ctx.lineTo(-s * 1.5, -s * .55 + wag); ctx.lineTo(-s * 1.25, wag * .5); ctx.lineTo(-s * 1.45, s * .35 + wag);
-  ctx.closePath(); ctx.fill();
-  ctx.beginPath(); // спинной плавник
-  ctx.moveTo(-s * .2, -s * .3); ctx.lineTo(-s * .45, -s * .85); ctx.lineTo(s * .2, -s * .3); ctx.fill();
-  ctx.beginPath(); // тело
-  ctx.moveTo(s * 1.1, 0);
-  ctx.quadraticCurveTo(s * .6, -s * .45, -s * .3, -s * .35);
-  ctx.quadraticCurveTo(-s * .9, -s * .15, -s, 0);
-  ctx.quadraticCurveTo(-s * .9, s * .2, -s * .3, s * .32);
-  ctx.quadraticCurveTo(s * .6, s * .4, s * 1.1, 0);
-  ctx.fill();
-  ctx.fillStyle = "#04121f"; // пасть
-  const open = k.chomp ? Math.sin(k.chomp / 12 * Math.PI) * s * .18 : s * .03;
-  ctx.beginPath(); ctx.moveTo(s * 1.1, 0); ctx.lineTo(s * .55, s * .08 - open); ctx.lineTo(s * .55, s * .12 + open); ctx.fill();
-  ctx.fillStyle = "#fff"; // глаз
-  ctx.beginPath(); ctx.arc(s * .65, -s * .13, Math.max(2, s * .06), 0, Math.PI * 2); ctx.fill();
-  ctx.restore();
-  ctx.fillStyle = "rgba(230,241,255,.85)";
-  ctx.font = `bold ${Math.min(s * .25, 16)}px system-ui`;
-  ctx.textAlign = "center";
-  ctx.fillText((k.bull ? "🐂 " : "🐻 ") + k.label + (k.eaten ? " · съел " + k.eaten : ""), k.x, k.y - s * .9);
+function spawnChampion(side) {
+  const bull = side === "bull";
+  units.push({ side, bull, archer:false, x: bull ? 40 : W-40, y: GROUND,
+    hp: 30, max: 30, strong:true, spd: 1.1, cd:0, phase:0, champ:true, r: 20 });
+  flashes.push({ x: bull ? 60 : W-60, y: GROUND-70, txt: (bull?"🟢":"🔴")+" БОГАТЫРЬ!", c: bull?"#2ee6a6":"#ff5c7a", life: 90 });
 }
 
 function renderTug() {
-  const cutoff = Date.now() / 1000 - 60;
-  while (flow.length && flow[0][0] < cutoff) flow.shift();
-  let b = 0, sl = 0;
-  for (const [, x, y] of flow) { b += x; sl += y; }
-  const share = b + sl ? b / (b + sl) : .5, pct = Math.round(share * 100);
-  tint = share;
-  $("bullPct").textContent = pct; $("bearPct").textContent = 100 - pct;
-  $("tugFill").style.width = $("knot").style.left = pct + "%";
-  $("tugBuy").textContent = fmt(b); $("tugSell").textContent = fmt(sl);
+  const cut = Date.now()/1000 - 60; while (flow.length && flow[0][0] < cut) flow.shift();
+  let b=0, s=0; for (const [,x,y] of flow) { b+=x; s+=y; }
+  const share = b+s ? b/(b+s) : .5, pct = Math.round(share*100); tint = share;
+  $("bp").textContent = pct; $("rp").textContent = 100-pct; $("fill").style.width = pct+"%";
   const who = $("who");
-  if (pct >= 60) { who.textContent = pct >= 75 ? "🐂🔥 Быки рвут!" : "🐂 Быки давят!"; who.className = "who buy"; }
-  else if (pct <= 40) { who.textContent = pct <= 25 ? "🐻🔥 Медведи рвут!" : "🐻 Медведи давят!"; who.className = "who sell"; }
-  else { who.textContent = "⚖️ Равновесие"; who.className = "who"; }
+  if (pct>=60){ who.textContent = pct>=75?"🐂🔥 Лонги рвут!":"🐂 Лонги давят!"; who.className="who bull"; }
+  else if (pct<=40){ who.textContent = pct<=25?"🐻🔥 Шорты рвут!":"🐻 Шорты давят!"; who.className="who bear"; }
+  else { who.textContent = "⚖️ Равновесие"; who.className="who"; }
+  // перевес шлёт богатыря
+  const now = performance.now();
+  if (pct>=66 && now>champCd.bull) { spawnChampion("bull"); champCd.bull = now + 9000; }
+  if (pct<=34 && now>champCd.bear) { spawnChampion("bear"); champCd.bear = now + 9000; }
 }
 setInterval(renderTug, 500);
 
-function renderStats() {
-  $("buyVol").textContent = fmt(buyVol);
-  $("sellVol").textContent = fmt(sellVol);
-  const total = buyVol + sellVol;
-  $("ratio").style.width = (total ? buyVol / total * 100 : 50) + "%";
+function nearestEnemy(u) {
+  let best=null, bd=Infinity;
+  for (const e of units) { if (e.bull===u.bull || e.hp<=0) continue; const d=Math.abs(e.x-u.x); if (d<bd){bd=d;best=e;} }
+  return [best, bd];
 }
 
-function renderLog() {
-  $("log").innerHTML = logRows.length
-    ? logRows.map(r => `<div class="${r.buy ? "buy" : "sell"}"><span>${r.liq ? (r.buy ? "🦈 ликв. шорта" : "🦈 ликв. лонга") : r.buy ? "▲ лонг" : "▼ шорт"}</span><b>${fmt(r.usd)}</b><span class="muted">${r.time}</span></div>`).join("")
-    : '<div class="muted">Ждём китов…</div>';
-}
+function step() {
+  // фон: небо + земля
+  const g = ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,"#223150"); g.addColorStop(.7,"#2b3c57"); g.addColorStop(.7,"#3a2f26"); g.addColorStop(1,"#241d16");
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  // подсветка перевеса
+  const lean=(tint-.5)*2;
+  if (Math.abs(lean)>.1){ ctx.fillStyle = lean>0?`rgba(46,230,166,${lean*.08})`:`rgba(255,92,122,${-lean*.08})`; ctx.fillRect(0,0,W,H); }
+  drawCastle(true); drawCastle(false);
 
-function spawnFish(usd, buy) {
-  const min = +$("min").value;
-  const size = Math.min(14 + Math.sqrt(usd / min) * 14, 140);
-  const dir = Math.random() < .5 ? 1 : -1;
-  fish.push({
-    x: dir > 0 ? -size : W + size, y: buy ? H * (.65 + Math.random() * .3) : H * (.1 + Math.random() * .25),
-    vx: dir * (1 + Math.random() * 1.5) * (40 / size + .4), vy: (buy ? -1 : 1) * (.3 + Math.random() * .4),
-    size, buy, label: fmt(usd), phase: Math.random() * 6, life: 0,
-  });
-}
+  // линия фронта по проценту
+  const front = W*tint;
+  ctx.strokeStyle="rgba(255,255,255,.08)"; ctx.setLineDash([4,6]); ctx.beginPath(); ctx.moveTo(front,90); ctx.lineTo(front,GROUND); ctx.stroke(); ctx.setLineDash([]);
 
-// Мелкие сделки: маленькие медузки-моллюски, дрейфуют медленно
-function spawnCritter(usd, buy) {
-  if (critters.length > 150) return;
-  const s = 3 + Math.min(Math.sqrt(usd / +$("min").value) * 9, 7);
-  critters.push({ x: Math.random() * W, y: buy ? H + s : -s, vy: (buy ? -1 : 1) * (.4 + Math.random() * .6),
-                  s, buy, phase: Math.random() * 6 });
-}
-
-function drawCritter(c) {
-  const pulse = 1 + Math.sin(c.phase) * .15;
-  ctx.save();
-  ctx.translate(c.x, c.y);
-  if (!c.buy) ctx.scale(1, -1); // купол смотрит по направлению движения
-  ctx.globalAlpha = .7;
-  ctx.fillStyle = ctx.strokeStyle = c.buy ? "#2ee6a6" : "#ff5c7a";
-  ctx.beginPath(); // купол
-  ctx.ellipse(0, 0, c.s * pulse, c.s * .8, 0, Math.PI, 0); ctx.fill();
-  ctx.lineWidth = 1;
-  for (let i = -1; i <= 1; i++) { // щупальца
-    ctx.beginPath(); ctx.moveTo(i * c.s * .5, 0);
-    ctx.quadraticCurveTo(i * c.s * .5 + Math.sin(c.phase + i) * 3, c.s, i * c.s * .5, c.s * 1.8 / pulse);
-    ctx.stroke();
+  // юниты
+  for (const u of units) {
+    if (u.hp<=0) continue;
+    const [enemy, dist] = nearestEnemy(u);
+    const reach = u.archer && !u.champ ? 999 : (u.r + (enemy?enemy.r:0) + 6);
+    if (u.archer && !u.champ) {
+      // лучник: держится у своей стороны, стреляет
+      const home = u.bull ? W*0.22 : W*0.78;
+      if (Math.abs(u.x-home)>4) u.x += Math.sign(home-u.x)*u.spd;
+      if (enemy && --u.cd<=0) { shoot(u, enemy); u.cd = 70+Math.random()*40; }
+    } else if (enemy) {
+      if (dist > reach) u.x += Math.sign(enemy.x-u.x) * u.spd * (u.champ?1.3:1);
+      else if (--u.cd<=0) { enemy.hp -= u.champ?3:1; u.cd = 22; hit(enemy.x, enemy.y, enemy.hp<=0); if (enemy.hp<=0) kills[u.side]++; }
+    } else {
+      // врагов нет — идём вперёд
+      u.x += (u.bull?1:-1)*u.spd*.6;
+      u.x = Math.max(30, Math.min(W-30, u.x));
+    }
+    u.phase += .2;
+    drawUnit(u, enemy);
   }
+  units = units.filter(u => u.hp > 0);
+
+  // стрелы
+  for (const a of arrows) { a.x+=a.vx; a.y+=a.vy; a.vy+=.08; a.life--; if (a.tgt && a.tgt.hp>0 && Math.hypot(a.tgt.x-a.x,a.tgt.y-a.y)<10){ a.tgt.hp--; hit(a.tgt.x,a.tgt.y,a.tgt.hp<=0); if(a.tgt.hp<=0)kills[a.by]++; a.life=0; } drawArrow(a); }
+  arrows = arrows.filter(a => a.life>0 && a.y<GROUND+10);
+
+  // вспышки попаданий/надписи
+  for (const f of flashes) { f.life--; if (f.txt){ ctx.globalAlpha=Math.min(1,f.life/30); ctx.fillStyle=f.c; ctx.font="bold 20px system-ui"; ctx.textAlign="center"; ctx.fillText(f.txt,f.x,f.y - (90-f.life)*.3); ctx.globalAlpha=1; }
+    else { ctx.globalAlpha=f.life/12; ctx.fillStyle=f.c; ctx.beginPath(); ctx.arc(f.x,f.y,(12-f.life)*1.6,0,7); ctx.fill(); ctx.globalAlpha=1; } }
+  flashes = flashes.filter(f => f.life>0);
+
+  $("bc").textContent = kills.bull; $("rc").textContent = kills.bear;
+  requestAnimationFrame(step);
+}
+
+function shoot(u, e) {
+  const dx = e.x-u.x, t = 26 + Math.abs(dx)/8;
+  arrows.push({ x:u.x, y:u.y-10, vx:dx/t, vy:-(GROUND-u.y)/t - 2, life:120, tgt:e, by:u.side, bull:u.bull });
+}
+function hit(x,y,dead){ flashes.push({ x, y, c: dead?"#ffd24d":"#ffffff", life: dead?12:7 }); }
+
+function drawCastle(bull) {
+  const x = bull ? 0 : W, dir = bull?1:-1, col = bull?"#1f6f55":"#7a2f3e", wall = bull?"#2a8a6a":"#9a3a4c";
+  ctx.fillStyle = col;
+  ctx.fillRect(bull?0:W-46, GROUND-150, 46, 150); // башня
+  ctx.fillStyle = wall;
+  ctx.fillRect(bull?46:W-54, GROUND-70, 8, 70); // стена-грань
+  // зубцы
+  ctx.fillStyle = col;
+  for (let i=0;i<4;i++){ const bx = bull? i*12 : W-46+i*12; ctx.fillRect(bx, GROUND-162, 8, 12); }
+  // флаг
+  ctx.strokeStyle="#cfd8e6"; ctx.beginPath(); ctx.moveTo(bull?23:W-23,GROUND-162); ctx.lineTo(bull?23:W-23,GROUND-185); ctx.stroke();
+  const fx = bull ? 23 : W-23;
+  ctx.fillStyle = bull?"#2ee6a6":"#ff5c7a"; ctx.beginPath();
+  ctx.moveTo(fx,GROUND-185); ctx.lineTo(fx+dir*16,GROUND-179); ctx.lineTo(fx,GROUND-173); ctx.fill();
+}
+
+function drawUnit(u, enemy) {
+  const s = u.r, col = u.bull?"#2ee6a6":"#ff5c7a", dark = u.bull?"#14b07f":"#d93a5a";
+  const face = enemy ? Math.sign(enemy.x-u.x) : (u.bull?1:-1);
+  ctx.save(); ctx.translate(u.x, u.y);
+  // тень
+  ctx.fillStyle="rgba(0,0,0,.25)"; ctx.beginPath(); ctx.ellipse(0, 2, s*.9, s*.3, 0, 0, 7); ctx.fill();
+  // тело
+  ctx.fillStyle = col; ctx.beginPath(); ctx.arc(0, -s, s*.78, 0, 7); ctx.fill();
+  ctx.fillRect(-s*.55, -s, s*1.1, s); // туловище
+  // ноги (шагают)
+  const sw = Math.sin(u.phase)*s*.3;
+  ctx.strokeStyle=dark; ctx.lineWidth=Math.max(2,s*.22); ctx.beginPath();
+  ctx.moveTo(-s*.25,0); ctx.lineTo(-s*.25+sw,s*.5); ctx.moveTo(s*.25,0); ctx.lineTo(s*.25-sw,s*.5); ctx.stroke();
+  // оружие
+  ctx.strokeStyle="#dfe7f2"; ctx.lineWidth=Math.max(2,s*.18);
+  if (u.archer && !u.champ) { // лук
+    ctx.beginPath(); ctx.arc(face*s*.6, -s*1.1, s*.6, -1, 1); ctx.stroke();
+  } else { // меч
+    ctx.beginPath(); ctx.moveTo(face*s*.5, -s*1.1); ctx.lineTo(face*s*1.4, -s*1.6 - Math.abs(sw)); ctx.stroke();
+  }
+  // корона богатыря
+  if (u.champ) { ctx.fillStyle="#ffd24d"; ctx.beginPath(); ctx.moveTo(-s*.6,-s*1.7); ctx.lineTo(-s*.6,-s*2.1); ctx.lineTo(-s*.2,-s*1.85); ctx.lineTo(0,-s*2.2); ctx.lineTo(s*.2,-s*1.85); ctx.lineTo(s*.6,-s*2.1); ctx.lineTo(s*.6,-s*1.7); ctx.fill(); }
+  // полоска hp для сильных
+  if (u.max>1) { ctx.fillStyle="rgba(0,0,0,.5)"; ctx.fillRect(-s,-s*2.0,2*s,3); ctx.fillStyle=col; ctx.fillRect(-s,-s*2.0,2*s*(u.hp/u.max),3); }
   ctx.restore();
 }
+function drawArrow(a){ ctx.strokeStyle="#e8d9a0"; ctx.lineWidth=2; const len=8, m=Math.hypot(a.vx,a.vy)||1; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(a.x-a.vx/m*len,a.y-a.vy/m*len); ctx.stroke(); }
 
-function drawFish(f) {
-  const s = f.size, color = f.buy ? "#2ee6a6" : "#ff5c7a", d = Math.sign(f.vx);
-  ctx.save();
-  ctx.translate(f.x, f.y);
-  ctx.scale(d, 1);
-  const wag = Math.sin(f.phase) * s * .15;
-  ctx.fillStyle = color;
-  ctx.globalAlpha = Math.min(1, f.life / 20);
-  ctx.beginPath(); // хвост
-  ctx.moveTo(-s * .8, 0);
-  ctx.lineTo(-s * 1.3, -s * .4 + wag);
-  ctx.lineTo(-s * 1.3, s * .4 + wag);
-  ctx.closePath(); ctx.fill();
-  ctx.beginPath(); // тело
-  ctx.ellipse(0, 0, s, s * .5, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "#04121f"; // глаз
-  ctx.beginPath(); ctx.arc(s * .55, -s * .12, Math.max(2, s * .07), 0, Math.PI * 2); ctx.fill();
-  ctx.restore();
-  if (s > 30) {
-    ctx.fillStyle = "#04121f";
-    ctx.font = `bold ${Math.min(s * .32, 26)}px system-ui`;
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(f.label, f.x, f.y + s * .08);
-  }
-}
-
-function frame() {
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, "#0a2a45"); g.addColorStop(1, "#020a12");
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  const lean = (tint - .5) * 2; // подсветка воды цветом побеждающей стороны
-  if (Math.abs(lean) > .1) { ctx.fillStyle = lean > 0 ? `rgba(46,230,166,${lean * .12})` : `rgba(255,92,122,${-lean * .12})`; ctx.fillRect(0, 0, W, H); }
-
-  if (Math.random() < .3) bubbles.push({ x: Math.random() * W, y: H + 5, r: 1 + Math.random() * 3 });
-  ctx.fillStyle = "rgba(160,210,255,.25)";
-  bubbles = bubbles.filter(b => (b.y -= .6 + b.r * .3) > -5);
-  for (const b of bubbles) { ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill(); }
-
-  critters = critters.filter(c => !c.dead && c.y > -20 && c.y < H + 20);
-  for (const c of critters) {
-    c.y += c.vy * (1 + Math.sin(c.phase) * .5); c.x += Math.sin(c.phase * .5) * .3; c.phase += .08;
-    drawCritter(c);
-  }
-
-  fish = fish.filter(f => !f.dead && f.x > -f.size * 2 && f.x < W + f.size * 2 && f.y > -f.size && f.y < H + f.size);
-  for (const f of fish) {
-    f.x += f.vx; f.y += f.vy + Math.sin(f.phase) * .3; f.phase += .15; f.life++;
-    drawFish(f);
-  }
-  sharks = sharks.filter(updateShark);
-  for (const k of sharks) drawShark(k);
-  requestAnimationFrame(frame);
-}
-
-$("symbol").onchange = () => { reset(); connect(); };
-$("min").onchange = reset;
-connect();
-frame();
+$("symbol").onchange = connect;
+$("big").onchange = ()=>{};
+connect(); step();
 </script>
 </body>
 </html>
