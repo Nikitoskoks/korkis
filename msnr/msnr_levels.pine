@@ -1,0 +1,90 @@
+//@version=5
+// MSNR (Malaysian Support & Resistance): A/V-уровни по закрытию свечей,
+// свежий/несвежий, пробой телом и смена роли (RBS/SBR).
+indicator("MSNR Levels (A/V, fresh/unfresh)", overlay = true, max_lines_count = 500, max_labels_count = 500)
+
+strength    = input.int(3, "Сила разворота (свечей с каждой стороны)", minval = 1)
+maxLevels   = input.int(8, "Макс. уровней каждого типа", minval = 1)
+flipOnBreak = input.bool(true, "Пробитый уровень меняет роль (RBS/SBR)")
+showUnfresh = input.bool(true, "Показывать несвежие уровни")
+colA        = input.color(color.red, "Цвет A-уровня (потолок)")
+colV        = input.color(color.green, "Цвет V-уровня (пол)")
+
+type Level
+    float price
+    bool  isA
+    bool  fresh
+    line  ln
+    label lb
+
+var levels = array.new<Level>()
+
+levelText(Level lv) =>
+    (lv.isA ? "A " : "V ") + (lv.fresh ? "свежий" : "несвежий")
+
+paint(Level lv) =>
+    col = lv.isA ? colA : colV
+    line.set_color(lv.ln, col)
+    line.set_style(lv.ln, lv.fresh ? line.style_solid : line.style_dashed)
+    label.set_textcolor(lv.lb, col)
+    label.set_text(lv.lb, levelText(lv))
+
+dropAt(int i) =>
+    lv = levels.get(i)
+    line.delete(lv.ln)
+    label.delete(lv.lb)
+    levels.remove(i)
+
+// 1. Обновляем существующие уровни
+bodyTop = math.max(open, close)
+bodyBot = math.min(open, close)
+if levels.size() > 0
+    for i = levels.size() - 1 to 0
+        lv = levels.get(i)
+        broken = lv.isA ? close > lv.price : close < lv.price
+        if broken
+            if flipOnBreak
+                // потолок стал полом / пол стал потолком, уровень снова свежий
+                lv.isA   := not lv.isA
+                lv.fresh := true
+                paint(lv)
+            else
+                dropAt(i)
+                continue
+        else
+            touched = lv.isA ? high >= lv.price and bodyTop < lv.price : low <= lv.price and bodyBot > lv.price
+            if touched and lv.fresh
+                alert("MSNR: цена коснулась свежего " + (lv.isA ? "A" : "V") + "-уровня " + str.tostring(lv.price, format.mintick), alert.freq_once_per_bar_close)
+                lv.fresh := false
+                paint(lv)
+        if not lv.fresh and not showUnfresh
+            dropAt(i)
+        else
+            line.set_x2(lv.ln, bar_index)
+            label.set_x(lv.lb, bar_index)
+
+// 2. Новые уровни: вершины и впадины линейного графика (по закрытию)
+addLevel(float p, bool isA) =>
+    x  = bar_index - strength
+    ln = line.new(x, p, bar_index, p, width = 2)
+    lb = label.new(bar_index, p, "", style = label.style_label_left, color = color.new(color.white, 100), size = size.small)
+    lv = Level.new(p, isA, true, ln, lb)
+    paint(lv)
+    levels.push(lv)
+    // лимит уровней одного типа: удаляем самый старый
+    cnt = 0
+    for l in levels
+        if l.isA == isA
+            cnt += 1
+    if cnt > maxLevels
+        for i = 0 to levels.size() - 1
+            if levels.get(i).isA == isA
+                dropAt(i)
+                break
+
+ph = ta.pivothigh(close, strength, strength)
+pl = ta.pivotlow(close, strength, strength)
+if not na(ph)
+    addLevel(ph, true)
+if not na(pl)
+    addLevel(pl, false)
