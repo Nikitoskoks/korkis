@@ -1,4 +1,4 @@
-//@version=5
+//@version=6
 // MSNR (Malaysian Support & Resistance): A/V-уровни по закрытию свечей,
 // свежий/несвежий, пробой телом и смена роли (RBS/SBR).
 indicator("MSNR Levels (A/V, fresh/unfresh)", overlay = true, max_lines_count = 500, max_labels_count = 500)
