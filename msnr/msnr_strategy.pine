@@ -21,7 +21,10 @@ useShort    = input.bool(false, "Продажи от потолков", group = 
 emaLen      = input.int(200, "Фильтр тренда: EMA", minval = 1, group = grpS)
 needColor   = input.bool(true, "Нужна свеча в сторону отскока", group = grpS)
 atrMult     = input.float(0.5, "Стоп за уровнем, × ATR", minval = 0.1, step = 0.1, group = grpS)
-rr          = input.float(3.0, "Тейк, × риск (RR)", minval = 0.5, step = 0.5, group = grpS)
+tpMode      = input.string("Следующий уровень", "Тейк", options = ["Следующий уровень", "Фикс. RR"], group = grpS)
+rr          = input.float(3.0, "Тейк для режима «Фикс. RR», × риск", minval = 0.5, step = 0.5, group = grpS)
+minRR       = input.float(1.5, "Мин. прибыль до уровня, × риск (иначе пропуск)", minval = 0.5, step = 0.5, group = grpS)
+useBE       = input.bool(true, "Стоп в безубыток после +1 риска", group = grpS)
 
 ema = ta.ema(close, emaLen)
 atr = ta.atr(14)
@@ -142,20 +145,49 @@ if barstate.islast
             label.set_textcolor(a.lb, vis ? col : color.new(col, 100))
 
 // 3. Сделки
+// ближайший уровень нужного типа за ценой (цель для тейка)
+nextLevel(bool wantA, bool above) =>
+    float best = na
+    for l in levels
+        if l.isA == wantA and (above ? l.price > close : l.price < close)
+            if na(best) or (above ? l.price < best : l.price > best)
+                best := l.price
+    best
+
+var float sl    = na
+var float tp    = na
+var float entry = na
+var float risk0 = na
+
 trendUp   = close > ema
 trendDown = close < ema
 longOk  = useLong and not na(longLvl) and trendUp and (not needColor or close > open)
 shortOk = useShort and not na(shortLvl) and trendDown and (not needColor or close < open)
+
 if strategy.position_size == 0
     if longOk
         stopL = longLvl - atr * atrMult
         riskL = close - stopL
-        if riskL > 0
+        tgt   = tpMode == "Фикс. RR" ? close + riskL * rr : nextLevel(true, true)
+        if riskL > 0 and not na(tgt) and (tgt - close) >= riskL * minRR
+            sl := stopL, tp := tgt, entry := close, risk0 := riskL
             strategy.entry("Long", strategy.long)
-            strategy.exit("L", "Long", stop = stopL, limit = close + riskL * rr)
     else if shortOk
         stopS = shortLvl + atr * atrMult
         riskS = stopS - close
-        if riskS > 0
+        tgt   = tpMode == "Фикс. RR" ? close - riskS * rr : nextLevel(false, false)
+        if riskS > 0 and not na(tgt) and (close - tgt) >= riskS * minRR
+            sl := stopS, tp := tgt, entry := close, risk0 := riskS
             strategy.entry("Short", strategy.short)
-            strategy.exit("S", "Short", stop = stopS, limit = close - riskS * rr)
+
+// безубыток: цена прошла +1 риск — стоп на точку входа
+if strategy.position_size > 0 and useBE and high >= entry + risk0
+    sl := math.max(sl, entry)
+if strategy.position_size < 0 and useBE and low <= entry - risk0
+    sl := math.min(sl, entry)
+
+if not na(sl)
+    strategy.exit("L", "Long", stop = sl, limit = tp)
+    strategy.exit("S", "Short", stop = sl, limit = tp)
+plot(strategy.position_size != 0 ? sl : na, "Стоп", color.red, style = plot.style_linebr)
+plot(strategy.position_size != 0 ? tp : na, "Тейк", color.green, style = plot.style_linebr)
