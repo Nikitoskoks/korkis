@@ -7,7 +7,7 @@ strategy("MSNR Strategy (backtest)", overlay = true, max_lines_count = 500, max_
      initial_capital = 10000, default_qty_type = strategy.percent_of_equity, default_qty_value = 10,
      commission_type = strategy.commission.percent, commission_value = 0.04, slippage = 2)
 
-strength    = input.int(5, "Сила разворота (свечей с каждой стороны)", minval = 1)
+strength    = input.int(10, "Сила разворота (свечей с каждой стороны)", minval = 1)
 maxLevels   = input.int(3, "Показывать ближайших уровней сверху/снизу", minval = 1)
 POOL        = 40  // сколько уровней каждого типа хранить в памяти
 flipOnBreak = input.bool(true, "Пробитый уровень меняет роль (RBS/SBR)")
@@ -17,11 +17,11 @@ colV        = input.color(color.green, "Цвет V-уровня (пол)")
 
 grpS        = "Стратегия"
 useLong     = input.bool(true, "Покупки от полов", group = grpS)
-useShort    = input.bool(true, "Продажи от потолков", group = grpS)
+useShort    = input.bool(false, "Продажи от потолков", group = grpS)
 emaLen      = input.int(200, "Фильтр тренда: EMA", minval = 1, group = grpS)
 needColor   = input.bool(true, "Нужна свеча в сторону отскока", group = grpS)
 atrMult     = input.float(0.5, "Стоп за уровнем, × ATR", minval = 0.1, step = 0.1, group = grpS)
-rr          = input.float(2.0, "Тейк, × риск (RR)", minval = 0.5, step = 0.5, group = grpS)
+rr          = input.float(3.0, "Тейк, × риск (RR)", minval = 0.5, step = 0.5, group = grpS)
 
 ema = ta.ema(close, emaLen)
 atr = ta.atr(14)
