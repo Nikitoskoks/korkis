@@ -4,7 +4,8 @@
 indicator("MSNR Levels (A/V, fresh/unfresh)", overlay = true, max_lines_count = 500, max_labels_count = 500)
 
 strength    = input.int(5, "Сила разворота (свечей с каждой стороны)", minval = 1)
-maxLevels   = input.int(4, "Макс. уровней каждого типа", minval = 1)
+maxLevels   = input.int(3, "Показывать ближайших уровней сверху/снизу", minval = 1)
+POOL        = 40  // сколько уровней каждого типа хранить в памяти
 flipOnBreak = input.bool(true, "Пробитый уровень меняет роль (RBS/SBR)")
 showUnfresh = input.bool(true, "Показывать несвежие уровни")
 colA        = input.color(color.red, "Цвет A-уровня (потолок)")
@@ -21,7 +22,7 @@ type Level
 var levels = array.new<Level>()
 
 levelText(Level lv) =>
-    (lv.isA ? "A " : "V ") + (lv.fresh ? "свежий" : "несвежий")
+    (lv.isA ? "ПОТОЛОК" : "ПОЛ") + (lv.flipped ? (lv.isA ? " (был пол, пробит)" : " (был потолок, пробит)") : "") + (lv.fresh ? "" : " · потрёпан")
 
 paint(Level lv) =>
     col = lv.isA ? colA : colV
@@ -75,13 +76,13 @@ addLevel(float p, bool isA) =>
     paint(lv)
     levels.push(lv)
 
-// лимит уровней одного типа: удаляем самые дальние от цены, пока не уложимся
+// память: храним до POOL уровней каждого типа, лишние (самые дальние) удаляем
 enforceCap(bool isA) =>
     cnt = 0
     for l in levels
         if l.isA == isA
             cnt += 1
-    while cnt > maxLevels
+    while cnt > POOL
         far  = -1
         dist = -1.0
         for i = 0 to levels.size() - 1
@@ -100,3 +101,19 @@ if not na(pl)
     addLevel(pl, false)
 enforceCap(true)
 enforceCap(false)
+
+// показываем только maxLevels ближайших к цене уровней каждого типа
+if barstate.islast
+    n = levels.size()
+    if n > 0
+        for i = 0 to n - 1
+            a = levels.get(i)
+            rank = 0
+            for j = 0 to n - 1
+                b = levels.get(j)
+                if j != i and b.isA == a.isA and math.abs(b.price - close) < math.abs(a.price - close)
+                    rank += 1
+            col = a.isA ? colA : colV
+            vis = rank < maxLevels
+            line.set_color(a.ln, vis ? col : color.new(col, 100))
+            label.set_textcolor(a.lb, vis ? col : color.new(col, 100))
