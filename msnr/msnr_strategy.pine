@@ -1,0 +1,161 @@
+//@version=6
+// MSNR-стратегия для проверки на истории.
+// Вход: хвост свечи коснулся СВЕЖЕГО уровня, а тело закрылось по другую сторону (отскок).
+// Покупки только от полов в тренде вверх, продажи только от потолков в тренде вниз.
+// Стоп за уровнем (ATR), тейк = стоп × RR.
+strategy("MSNR Strategy (backtest)", overlay = true, max_lines_count = 500, max_labels_count = 500,
+     initial_capital = 10000, default_qty_type = strategy.percent_of_equity, default_qty_value = 10,
+     commission_type = strategy.commission.percent, commission_value = 0.04, slippage = 2)
+
+strength    = input.int(5, "Сила разворота (свечей с каждой стороны)", minval = 1)
+maxLevels   = input.int(3, "Показывать ближайших уровней сверху/снизу", minval = 1)
+POOL        = 40  // сколько уровней каждого типа хранить в памяти
+flipOnBreak = input.bool(true, "Пробитый уровень меняет роль (RBS/SBR)")
+showUnfresh = input.bool(true, "Показывать несвежие уровни")
+colA        = input.color(color.red, "Цвет A-уровня (потолок)")
+colV        = input.color(color.green, "Цвет V-уровня (пол)")
+
+grpS        = "Стратегия"
+useLong     = input.bool(true, "Покупки от полов", group = grpS)
+useShort    = input.bool(true, "Продажи от потолков", group = grpS)
+emaLen      = input.int(200, "Фильтр тренда: EMA", minval = 1, group = grpS)
+needColor   = input.bool(true, "Нужна свеча в сторону отскока", group = grpS)
+atrMult     = input.float(0.5, "Стоп за уровнем, × ATR", minval = 0.1, step = 0.1, group = grpS)
+rr          = input.float(2.0, "Тейк, × риск (RR)", minval = 0.5, step = 0.5, group = grpS)
+
+ema = ta.ema(close, emaLen)
+atr = ta.atr(14)
+plot(ema, "EMA тренда", color.orange)
+
+type Level
+    float price
+    bool  isA
+    bool  fresh
+    bool  flipped
+    line  ln
+    label lb
+
+var levels = array.new<Level>()
+
+levelText(Level lv) =>
+    (lv.isA ? "ПОТОЛОК" : "ПОЛ") + (lv.flipped ? (lv.isA ? " (был пол, пробит)" : " (был потолок, пробит)") : "") + (lv.fresh ? "" : " · потрёпан")
+
+paint(Level lv) =>
+    col = lv.isA ? colA : colV
+    line.set_color(lv.ln, col)
+    line.set_style(lv.ln, lv.fresh ? line.style_solid : line.style_dashed)
+    label.set_textcolor(lv.lb, col)
+    label.set_text(lv.lb, levelText(lv))
+
+dropAt(int i) =>
+    lv = levels.get(i)
+    line.delete(lv.ln)
+    label.delete(lv.lb)
+    levels.remove(i)
+
+// 1. Обновляем существующие уровни
+float longLvl  = na
+float shortLvl = na
+bodyTop = math.max(open, close)
+bodyBot = math.min(open, close)
+if levels.size() > 0
+    for i = levels.size() - 1 to 0
+        lv = levels.get(i)
+        broken = lv.isA ? close > lv.price : close < lv.price
+        if broken
+            if flipOnBreak and not lv.flipped
+                // потолок стал полом / пол стал потолком, уровень снова свежий.
+                // Роль меняется только один раз: повторный пробой удаляет уровень.
+                lv.isA     := not lv.isA
+                lv.fresh   := true
+                lv.flipped := true
+                paint(lv)
+            else
+                dropAt(i)
+                continue
+        else
+            touched = lv.isA ? high >= lv.price and bodyTop < lv.price : low <= lv.price and bodyBot > lv.price
+            if touched and lv.fresh
+                // отскок от свежего уровня = сигнал (берём ближайший к цене)
+                if lv.isA
+                    shortLvl := na(shortLvl) ? lv.price : math.min(shortLvl, lv.price)
+                else
+                    longLvl := na(longLvl) ? lv.price : math.max(longLvl, lv.price)
+                alert("MSNR: цена коснулась свежего " + (lv.isA ? "A" : "V") + "-уровня " + str.tostring(lv.price, format.mintick), alert.freq_once_per_bar_close)
+                lv.fresh := false
+                paint(lv)
+        if not lv.fresh and not showUnfresh
+            dropAt(i)
+        else
+            line.set_x2(lv.ln, bar_index)
+            label.set_x(lv.lb, bar_index)
+
+// 2. Новые уровни: вершины и впадины линейного графика (по закрытию)
+addLevel(float p, bool isA) =>
+    x  = bar_index - strength
+    ln = line.new(x, p, bar_index, p, width = 2)
+    lb = label.new(bar_index, p, "", style = label.style_label_left, color = color.new(color.white, 100), size = size.small)
+    lv = Level.new(p, isA, true, false, ln, lb)
+    paint(lv)
+    levels.push(lv)
+
+// память: храним до POOL уровней каждого типа, лишние (самые дальние) удаляем
+enforceCap(bool isA) =>
+    cnt = 0
+    for l in levels
+        if l.isA == isA
+            cnt += 1
+    while cnt > POOL
+        far  = -1
+        dist = -1.0
+        for i = 0 to levels.size() - 1
+            l = levels.get(i)
+            if l.isA == isA and math.abs(l.price - close) > dist
+                dist := math.abs(l.price - close)
+                far  := i
+        dropAt(far)
+        cnt -= 1
+
+ph = ta.pivothigh(close, strength, strength)
+pl = ta.pivotlow(close, strength, strength)
+if not na(ph)
+    addLevel(ph, true)
+if not na(pl)
+    addLevel(pl, false)
+enforceCap(true)
+enforceCap(false)
+
+// показываем только maxLevels ближайших к цене уровней каждого типа
+if barstate.islast
+    n = levels.size()
+    if n > 0
+        for i = 0 to n - 1
+            a = levels.get(i)
+            rank = 0
+            for j = 0 to n - 1
+                b = levels.get(j)
+                if j != i and b.isA == a.isA and math.abs(b.price - close) < math.abs(a.price - close)
+                    rank += 1
+            col = a.isA ? colA : colV
+            vis = rank < maxLevels
+            line.set_color(a.ln, vis ? col : color.new(col, 100))
+            label.set_textcolor(a.lb, vis ? col : color.new(col, 100))
+
+// 3. Сделки
+trendUp   = close > ema
+trendDown = close < ema
+longOk  = useLong and not na(longLvl) and trendUp and (not needColor or close > open)
+shortOk = useShort and not na(shortLvl) and trendDown and (not needColor or close < open)
+if strategy.position_size == 0
+    if longOk
+        stopL = longLvl - atr * atrMult
+        riskL = close - stopL
+        if riskL > 0
+            strategy.entry("Long", strategy.long)
+            strategy.exit("L", "Long", stop = stopL, limit = close + riskL * rr)
+    else if shortOk
+        stopS = shortLvl + atr * atrMult
+        riskS = stopS - close
+        if riskS > 0
+            strategy.entry("Short", strategy.short)
+            strategy.exit("S", "Short", stop = stopS, limit = close - riskS * rr)
